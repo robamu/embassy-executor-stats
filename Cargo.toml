@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["stm32h7-app"]
-# The app only builds for its own target, see its `.cargo/config.toml`.
+members = ["stm32h7-app", "va108xx-app"]
+# The apps only build for their own targets, see their `.cargo/config.toml`.
 default-members = ["."]
 
 [package.metadata.docs.rs]
@@ -72,3 +72,10 @@ incremental = false
 lto = 'fat'
 opt-level = 3 # <-
 overflow-checks = false # <-
+
+# The VA108xx HAL depends on these crates.io versions. They are replaced by the local embassy
+# checkout, so that only one copy of each embassy crate ends up in the program.
+[patch.crates-io]
+embassy-sync = { path = "../embassy/embassy-sync" }
+embassy-time-driver = { path = "../embassy/embassy-time-driver" }
+embassy-time-queue-utils = { path = "../embassy/embassy-time-queue-utils" }

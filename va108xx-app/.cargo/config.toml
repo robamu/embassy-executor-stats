@@ -1,0 +1,19 @@
+# The VA108xx has a Cortex-M0 core.
+[target.thumbv6m-none-eabi]
+# Flashes the binary and prints the defmt log output via RTT.
+runner = "probe-rs run --chip VA108xx_RAM"
+rustflags = [
+  # Disables page alignment of sections. This is required when the flash or RAM regions in
+  # memory.x are not aligned to 0x10000.
+  "-C", "link-arg=--nmagic",
+  # Linker script from cortex-m-rt. It includes memory.x, which build.rs provides.
+  "-C", "link-arg=-Tlink.x",
+  # Places the defmt format strings in a separate section which is not flashed to the target.
+  "-C", "link-arg=-Tdefmt.x",
+]
+
+[build]
+target = "thumbv6m-none-eabi"
+
+[env]
+DEFMT_LOG = "debug"
