@@ -2,6 +2,9 @@
 name = "embassy-executor-stats"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Run time statistics for embassy-executor tasks, executors and interrupts"
+readme = "README.md"
 
 [workspace]
 members = ["stm32h7-app", "va108xx-app"]
