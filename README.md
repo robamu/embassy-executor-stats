@@ -1,7 +1,6 @@
-# embassy-executor-stats
+# Run-time statistics for applications using `embassy-executor`
 
-Run time statistics for [embassy-executor](https://github.com/embassy-rs/embassy), similar to
-`vTaskGetRunTimeStats` of FreeRTOS.
+This crate provides information similar to the `vTaskGetRunTimeStats` of FreeRTOS.
 
 The library uses the `trace` feature of `embassy-executor` to measure the time spent in tasks,
 executors and interrupt handlers. It prints a table like this:
@@ -39,7 +38,8 @@ On other architectures, implement the `Counter` trait with any free-running coun
 ## Examples
 
 - [`stm32h7-app`](stm32h7-app): STM32H753 (Cortex-M7) with a thread mode and an interrupt executor.
-- [`va108xx-app`](va108xx-app): VA108xx (Cortex-M0).
+- [`stm32f0-app`](stm32f0-app): STM32F0DISCOVERY board with a STM32F051 (Cortex-M0). TIM2 is the
+  counter, because the Cortex-M0 has no DWT cycle counter.
 
 Run them with `cargo run` from their directory. This requires
 [probe-rs](https://probe.rs).

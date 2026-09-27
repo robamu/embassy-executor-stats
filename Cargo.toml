@@ -7,7 +7,7 @@ description = "Run time statistics for embassy-executor tasks, executors and int
 readme = "README.md"
 
 [workspace]
-members = ["stm32h7-app", "va108xx-app"]
+members = ["stm32h7-app", "stm32f0-app"]
 # The apps only build for their own targets, see their `.cargo/config.toml`.
 default-members = ["."]
 
@@ -75,10 +75,3 @@ incremental = false
 lto = 'fat'
 opt-level = 3 # <-
 overflow-checks = false # <-
-
-# The VA108xx HAL depends on these crates.io versions. They are replaced by the local embassy
-# checkout, so that only one copy of each embassy crate ends up in the program.
-[patch.crates-io]
-embassy-sync = { path = "../embassy/embassy-sync" }
-embassy-time-driver = { path = "../embassy/embassy-time-driver" }
-embassy-time-queue-utils = { path = "../embassy/embassy-time-queue-utils" }
