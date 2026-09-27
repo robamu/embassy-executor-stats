@@ -1,9 +1,10 @@
-# Run-time statistics for applications using `embassy-executor`
+# Run time statistics for applications using `embassy-executor`
 
-This crate provides information similar to the `vTaskGetRunTimeStats` of FreeRTOS.
+This crate provides information similar to [`vTaskGetRunTimeStats`][freertos-stats] of FreeRTOS.
 
-The library uses the `trace` feature of `embassy-executor` to measure the time spent in tasks,
-executors and interrupt handlers. It prints a table like this:
+The library uses the [`trace` feature][executor-features] of
+[`embassy-executor`][embassy-executor] to measure the time spent in tasks, executors and interrupt
+handlers. The results can be printed as a table:
 
 ```text
 Task                Time [us]       %      Polls
@@ -28,17 +29,32 @@ uptime                5000123
 
 ## Features
 
-- `cortex-m`: Uses the DWT cycle counter and identifies interrupts through `VECTACTIVE`.
-- `defmt`: Printers for the statistics.
-- `linear-map`: Stores the statistics in a `heapless::LinearMap`, which needs less code and
-  memory for small sizes.
+- `cortex-m`: Provides the DWT cycle counter where the core has one, and identifies interrupts
+  through `VECTACTIVE`.
+- `defmt`: Printers for the statistics using [`defmt`][defmt].
+- `linear-map`: Stores the statistics in a [`heapless::LinearMap`][linear-map], which needs less
+  code and memory for small sizes.
 
 On other architectures, implement the `Counter` trait with any free-running counter.
+
+## Configuration
+
+The sizes of the static storage are read from environment variables at build time. Set them in
+the `.cargo/config.toml` of your application:
+
+```toml
+[env]
+EMBASSY_EXECUTOR_STATS_MAX_TASKS = "16"   # default 8
+EMBASSY_EXECUTOR_STATS_MAX_IRQS = "8"     # default 4
+EMBASSY_EXECUTOR_STATS_MAX_NESTING = "8"  # default 4
+```
+
+Without the `linear-map` feature, `MAX_TASKS` and `MAX_IRQS` must be powers of two.
 
 ## Examples
 
 - [`stm32h7-app`](stm32h7-app): STM32H753 (Cortex-M7) with a thread mode and an interrupt executor.
-- [`stm32f0-app`](stm32f0-app): STM32F0DISCOVERY board with a STM32F051 (Cortex-M0). TIM2 is the
+- [`stm32f0-app`](stm32f0-app): STM32F0DISCOVERY board with an STM32F051 (Cortex-M0). TIM2 is the
   counter, because the Cortex-M0 has no DWT cycle counter.
 
 Run them with `cargo run` from their directory. This requires
@@ -59,3 +75,9 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
 the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without
 any additional terms or conditions.
+
+[freertos-stats]: https://www.freertos.org/Documentation/02-Kernel/02-Kernel-features/08-Run-time-statistics
+[embassy-executor]: https://docs.rs/embassy-executor
+[executor-features]: https://docs.rs/crate/embassy-executor/latest/features
+[defmt]: https://docs.rs/defmt
+[linear-map]: https://docs.rs/heapless/0.9/heapless/linear_map/type.LinearMap.html

@@ -21,3 +21,7 @@ target = "thumbv7em-none-eabihf"
 # Compile time log level filter for defmt. Can be overridden per module, for example
 # "info,embassy_stm32=warn".
 DEFMT_LOG = "debug"
+# 7 tasks and 1 measured interrupt. Two executors with a task each plus UART5 nest 5 contexts deep.
+EMBASSY_EXECUTOR_STATS_MAX_TASKS = "8"
+EMBASSY_EXECUTOR_STATS_MAX_IRQS = "4"
+EMBASSY_EXECUTOR_STATS_MAX_NESTING = "8"

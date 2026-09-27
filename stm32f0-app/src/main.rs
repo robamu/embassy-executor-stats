@@ -37,7 +37,7 @@ impl Counter for TimCounter {
         pac::TIM2.cnt().read()
     }
 
-    fn hz() -> u32 {
+    fn frequency_hz() -> u32 {
         rcc::frequency::<TIM2>().0
     }
 }
@@ -62,8 +62,14 @@ async fn main(spawner: Spawner) {
     // User LEDs of the STM32F0DISCOVERY.
     let blue = Output::new(p.PC8, Level::Low, Speed::Low);
     let green = Output::new(p.PC9, Level::Low, Speed::Low);
-    spawner.spawn(named(blink(blue, Duration::from_millis(250)).unwrap(), "led_blue"));
-    spawner.spawn(named(blink(green, Duration::from_millis(500)).unwrap(), "led_green"));
+    spawner.spawn(named(
+        blink(blue, Duration::from_millis(250)).unwrap(),
+        "led_blue",
+    ));
+    spawner.spawn(named(
+        blink(green, Duration::from_millis(500)).unwrap(),
+        "led_green",
+    ));
 
     spawner.spawn(named(busy_worker().unwrap(), "busy_worker"));
 

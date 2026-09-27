@@ -59,7 +59,7 @@ mod dwt {
             DWT::cycle_count()
         }
 
-        fn hz() -> u32 {
+        fn frequency_hz() -> u32 {
             CORE_CLOCK_HZ.load(Ordering::Relaxed)
         }
     }

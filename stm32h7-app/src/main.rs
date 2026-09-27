@@ -44,9 +44,18 @@ async fn main(spawner: Spawner) {
     let green = Output::new(p.PB0, Level::Low, Speed::Low);
     let yellow = Output::new(p.PE1, Level::Low, Speed::Low);
     let red = Output::new(p.PB14, Level::Low, Speed::Low);
-    spawner.spawn(named(blink(green, Duration::from_millis(250)).unwrap(), "led_green"));
-    spawner.spawn(named(blink(yellow, Duration::from_millis(500)).unwrap(), "led_yellow"));
-    spawner.spawn(named(blink(red, Duration::from_millis(1000)).unwrap(), "led_red"));
+    spawner.spawn(named(
+        blink(green, Duration::from_millis(250)).unwrap(),
+        "led_green",
+    ));
+    spawner.spawn(named(
+        blink(yellow, Duration::from_millis(500)).unwrap(),
+        "led_yellow",
+    ));
+    spawner.spawn(named(
+        blink(red, Duration::from_millis(1000)).unwrap(),
+        "led_red",
+    ));
 
     spawner.spawn(named(busy_worker().unwrap(), "busy_worker"));
 

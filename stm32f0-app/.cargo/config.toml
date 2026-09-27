@@ -15,3 +15,8 @@ target = "thumbv6m-none-eabi"
 
 [env]
 DEFMT_LOG = "debug"
+
+# 7 tasks and 1 measured interrupt. Two executors with a task each plus UART5 nest 5 contexts deep.
+EMBASSY_EXECUTOR_STATS_MAX_TASKS = "8"
+EMBASSY_EXECUTOR_STATS_MAX_IRQS = "4"
+EMBASSY_EXECUTOR_STATS_MAX_NESTING = "8"
