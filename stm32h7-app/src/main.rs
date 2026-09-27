@@ -1,13 +1,11 @@
 #![no_std]
 #![no_main]
 
-mod trace;
-
 use embassy_executor::{InterruptExecutor, SpawnToken, Spawner};
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
-use embassy_time::{Duration, Ticker, Timer};
+use embassy_time::{Duration, Instant, Ticker, Timer};
 use {defmt_rtt as _, panic_probe as _};
 
 const STATS_PERIOD: Duration = Duration::from_secs(5);
@@ -22,17 +20,17 @@ unsafe fn UART4() {
 /// Plain interrupt handler without an executor, pended by [`high_prio`] which it preempts.
 #[interrupt]
 fn UART5() {
-    let _scope = trace::interrupt_scope("UART5");
+    let _scope = embassy_executor_stats::cortex_m::interrupt_scope("UART5");
     cortex_m::asm::delay(5_000);
 }
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
-    let core = cortex_m::Peripherals::take().unwrap();
+    let mut core = cortex_m::Peripherals::take().unwrap();
     // Assumes the default D1CPRE divider of 1, so the core runs at sysclk.
     let core_clock = embassy_stm32::rcc::clocks(&p.RCC).sys.to_hertz().unwrap();
-    trace::init(core.DCB, core.DWT, core_clock.0);
+    embassy_executor_stats::cortex_m::init(&mut core.DCB, &mut core.DWT, core_clock.0);
 
     interrupt::UART5.set_priority(Priority::P5);
     // SAFETY: The UART5 handler only burns cycles and uses no shared state.
@@ -60,7 +58,7 @@ async fn main(spawner: Spawner) {
         Timer::after(STATS_PERIOD).await;
         defmt::println!("");
         defmt::println!("==================== Task stats ====================");
-        trace::print_stats();
+        embassy_executor_stats::print_stats(Instant::now().as_micros());
     }
 }
 

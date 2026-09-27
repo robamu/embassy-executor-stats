@@ -21,6 +21,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arm-targets"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0555f30eb9cd1a07d7677d01971da6c74cbbb0f73f0667cbee74e590a68a619"
+
+[[package]]
 name = "as-slice"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -304,6 +310,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "embassy-executor-stats"
+version = "0.1.0"
+dependencies = [
+ "arm-targets",
+ "cortex-m",
+ "critical-section",
+ "defmt",
+ "embassy-executor",
+ "heapless",
+]
+
+[[package]]
 name = "embassy-executor-timer-queue"
 version = "0.1.1"
 dependencies = [
@@ -398,23 +416,6 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "heapless",
-]
-
-[[package]]
-name = "embassy-task-trace-experiment"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "critical-section",
- "defmt",
- "defmt-rtt",
- "embassy-executor",
- "embassy-stm32",
- "embassy-sync",
- "embassy-time",
- "heapless",
- "panic-probe",
 ]
 
 [[package]]
@@ -963,6 +964,21 @@ checksum = "55e8634413ba08452b793b2f0f8574edd801a65b24c7f3cdce8034eef1359db4"
 dependencies = [
  "cortex-m",
  "vcell",
+]
+
+[[package]]
+name = "stm32h7-app"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt",
+ "defmt-rtt",
+ "embassy-executor",
+ "embassy-executor-stats",
+ "embassy-stm32",
+ "embassy-time",
+ "panic-probe",
 ]
 
 [[package]]

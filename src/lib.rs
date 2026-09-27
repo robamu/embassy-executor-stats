@@ -1,42 +1,70 @@
-//! # Task run time statistics
+//! # Embassy executor run time statistics
 //!
-//! Task run time is measured with a free-running 32-bit counter. Uptime comes from
-//! `embassy-time` instead, because the core clock and with it the DWT cycle counter
-//! stop while the executor sleeps.
+//! Measures the time spent in tasks, interrupt handlers and executors, similar to
+//! `vTaskGetRunTimeStats` of FreeRTOS.
 //!
-//! This library builds on the `trace` feature of `embassy-executor`. It tracks the cycle counts
+//! This library builds on the `trace` feature of `embassy-executor`. It tracks the counter ticks
 //! for following components:
 //!
 //!  - Tasks
 //!  - Executors, both interrupts and thread mode.
 //!  - Interrupts
 //!
-//!  However, you need to instrument interrupt handlers which are not used to run interrupt
-//!  executor yourself using the [interrupt_scope] function.
+//! However, you need to instrument interrupt handlers which are not used to run an interrupt
+//! executor yourself using the [`interrupt_scope`] function. Also, it does not measure the IDLE
+//! times. You need to mesaure the total uptime and subtract all other cycle times
+//! to determine that.
+//!
+//! The library registers the only `Trace` implementation of the program, so it can not be
+//! combined with another tracer. It enables the `trace` and `metadata-name` features of
+//! `embassy-executor`.
 //!
 //! ## Usage
 //!
-//! The `trace` and `metadata-name` features of `embassy-executor` are enabled by this crate.
-//!
-//! 1. Call [`init`] before the first measurement.
-//! 2. Name each task before spawning it. Unnamed tasks are shown by their address.
+//! 1. Call [`init`] with a [`Counter`] before the first measurement. On cortex-m, you can also
+//!    use [`cortex_m::init`]
+//! 2. It is recommended to name each task before spawning it. Unnamed tasks are shown by their
+//!    address.
 //! 3. Measure interrupt handlers with [`interrupt_scope`], see below.
 //! 4. Read the statistics, see below.
 //!
 //! ```ignore
-//! let core = cortex_m::Peripherals::take().unwrap();
-//! trace::init(core.DCB, core.DWT, core_clock_hz);
+//! let mut core = cortex_m::Peripherals::take().unwrap();
+//! embassy_executor_stats::cortex_m::init(&mut core.DCB, &mut core.DWT, core_clock_hz);
 //!
 //! let token = my_task().unwrap();
 //! token.metadata().set_name("my_task");
 //! spawner.spawn(token);
 //! ```
 //!
+//! ## Counters
+//!
+//! The library provides and uses the [`Counter`] abstraction to be portable.
+//! Any free-running counter works. Its frequency only has to be high enough to resolve the
+//! shortest task polls. On Cortex-M, the `cortex-m` feature provides the DWT cycle counter as
+//! [`cortex_m::DwtCounter`], and [`cortex_m::init`] which starts the measurements with it. On other
+//! architectures, implement [`Counter`] yourself using the core timer of your CPU or a high
+//! resolution hardware timer.
+//!
+//! Counters narrower than 32 bits, like 16-bit timers should set [`Counter::MASK`].
+//!
 //! ## Reading the statistics
 //!
-//! [`print_stats`] prints a table with one row per task and interrupt and a summary.
-//! [`print_stats_defmt`] prints the same content without alignment, but needs about 3 KB less
-//! flash because it does not use `core::fmt`. The summary rows add up to the uptime:
+//! [`snapshot`] returns a copy of all counters. It takes the uptime in microseconds, for example
+//! from `embassy_time::Instant::now().as_micros()`. The critical section only covers the copy, so
+//! processing it does not add to the interrupt latency.
+//!
+//! ```ignore
+//! if let Some(stats) = embassy_executor_stats::snapshot(Instant::now().as_micros()) {
+//!     for (id, task) in &stats.tasks {
+//!         let us = stats.ticks_to_us(task.ticks);
+//!     }
+//!     let idle_us = stats.idle_and_other_us();
+//! }
+//! ```
+//!
+//! [`Snapshot`] implements [`core::fmt::Display`] as a table with one row per task and interrupt
+//! and a summary. The summary rows add up to the uptime:
 //!
 //! ```text
 //! Task                Time [us]       %      Polls
@@ -47,7 +75,7 @@
 //!
 //! Interrupt           Time [us]       %      Calls
 //! ------------------------------------------------
-//! uart5_dummy             78125    1.56       1000
+//! UART5                   78125    1.56       1000
 //!
 //! Summary             Time [us]       %
 //! ------------------------------------------------
@@ -59,29 +87,23 @@
 //! uptime                5000123
 //! ```
 //!
-//! For custom processing, [`snapshot`] returns a copy of all counters. The critical section only
-//! covers the copy, so processing it does not add to the interrupt latency.
-//!
-//! ```ignore
-//! if let Some(stats) = trace::snapshot() {
-//!     for (id, task) in &stats.tasks {
-//!         let us = stats.ticks_to_us(task.ticks);
-//!     }
-//!     let idle_us = stats.idle_and_other_us();
-//! }
-//! ```
+//! With the `defmt` feature, `print_stats` prints this table. `print_stats_defmt` prints the same
+//! content without alignment and needs less flash space.
 //!
 //! ## Measuring interrupts
 //!
-//! Create the scope first thing in the handler. It measures until it is dropped:
+//! Create the scope first thing in the handler. It measures until it is dropped. The ID
+//! identifies the interrupt, the name only labels its row:
 //!
 //! ```ignore
 //! #[interrupt]
 //! fn UART5() {
-//!     let _scope = trace::interrupt_scope("UART5");
+//!     let _scope = embassy_executor_stats::interrupt_scope(UART5_ID, "UART5");
 //!     // handler code
 //! }
 //! ```
+//!
+//! On Cortex-M, `cortex_m::interrupt_scope` reads the ID from the active exception number instead.
 //!
 //! Handlers generated by `bind_interrupts!` of the HAL can not be instrumented. Write the handler
 //! and the `Binding` implementation yourself instead, and forward to the HAL handler:
@@ -97,7 +119,7 @@
 //!
 //! #[interrupt]
 //! fn USART3() {
-//!     let _scope = trace::interrupt_scope("usart3");
+//!     let _scope = embassy_executor_stats::cortex_m::interrupt_scope("USART3");
 //!     unsafe {
 //!         <usart::BufferedInterruptHandler<peripherals::USART3> as Handler<interrupt::typelevel::USART3>>::on_interrupt();
 //!     }
@@ -110,40 +132,86 @@
 //! ## Limits
 //!
 //! - [`MAX_TASKS`], [`MAX_IRQS`] and [`MAX_NESTING`] size the static storage. Overflows are
-//!   reported by [`print_stats`] and in the [`Snapshot`].
+//!   reported in the [`Snapshot`].
 //! - Time of interrupt handlers without a scope is added to the context they preempted, or to
 //!   [`Snapshot::idle_and_other_us`] if no context was active.
-//! - A single task poll must not take longer than one counter wrap, about 67 s at 64 MHz.
-//! - Single core Cortex-M only. Every hook takes a critical section.
+//! - A single task poll must not take longer than one counter wrap, about 67 s for a 32-bit
+//!   counter at 64 MHz.
+//! - Single core only. Every hook takes a critical section, so the program needs a
+//!   `critical-section` implementation.
+
+#![no_std]
 
 use core::cell::RefCell;
-use core::fmt::Write as _;
+use core::fmt::{self, Write as _};
 use core::marker::PhantomData;
-use core::sync::atomic::{AtomicU32, Ordering};
 
-use cortex_m::peripheral::{DCB, DWT, SCB};
 use critical_section::Mutex;
 use embassy_executor::ExecutorId;
 use embassy_executor::raw::TaskRef;
 use embassy_executor::raw::trace::Trace;
-use embassy_time::Instant;
-use heapless::index_map::FnvIndexMap;
 
-/// Must be a power of two and at least the number of task slots in the program.
-const MAX_TASKS: usize = 16;
-/// Must be a power of two and at least the number of measured interrupts.
-const MAX_IRQS: usize = 16;
+#[cfg(feature = "cortex-m")]
+pub mod cortex_m;
 
-/// Depth of the [`State::active_contexts`] stack.
+/// At least the number of tasks alive at the same time. Without the `linear-map` feature, it must
+/// also be a power of two.
+pub const MAX_TASKS: usize = 16;
+/// At least the number of measured interrupts. Without the `linear-map` feature, it must also be
+/// a power of two.
+pub const MAX_IRQS: usize = 16;
+
+/// Task statistics keyed by task ID.
+///
+/// The map type depends on the `linear-map` feature. Code using it should stick to the methods
+/// both map types offer, like `iter`, `values`, `get` and `len`.
+#[cfg(not(feature = "linear-map"))]
+pub type TaskMap = heapless::index_map::FnvIndexMap<usize, TaskStats, MAX_TASKS>;
+#[cfg(feature = "linear-map")]
+pub type TaskMap = heapless::LinearMap<usize, TaskStats, MAX_TASKS>;
+
+/// Interrupt statistics keyed by the ID passed to [`interrupt_scope`]. See [`TaskMap`].
+#[cfg(not(feature = "linear-map"))]
+pub type IrqMap = heapless::index_map::FnvIndexMap<usize, IrqStats, MAX_IRQS>;
+#[cfg(feature = "linear-map")]
+pub type IrqMap = heapless::LinearMap<usize, IrqStats, MAX_IRQS>;
+
+/// Depth of the context stack.
 ///
 /// An interrupt executor can preempt a lower priority executor or the thread executor while it
 /// polls a task. Each executor which is active at the same time pushes itself and the task it
 /// polls. Each measured interrupt handler pushes itself. So this must be at least twice the
 /// number of executor priority levels plus the number of measured interrupt priority levels.
-const MAX_NESTING: usize = 8;
+pub const MAX_NESTING: usize = 8;
 
-/// Frequency of [`counter`], set by [`init`]. Zero means [`init`] was not called yet.
-static COUNTER_HZ: AtomicU32 = AtomicU32::new(0);
+/// Free-running counter used for all measurements.
+pub trait Counter {
+    /// Bits of [`Counter::now`] which the counter uses.
+    ///
+    /// Only the difference between two values is used, so the counter may wrap. It must not
+    /// wrap twice during a single task poll though.
+    const MASK: u32 = u32::MAX;
+
+    /// Current counter value. It must count up.
+    fn now() -> u32;
+
+    /// Frequency of the counter. It must not be zero.
+    fn hz() -> u32;
+}
+
+/// Starts the measurements with the given counter.
+///
+/// Everything before this call is not measured.
+pub fn init<C: Counter>() {
+    with_state(|s| {
+        s.counter = Some(CounterFns {
+            now: C::now,
+            hz: C::hz,
+            mask: C::MASK,
+        });
+        s.last_count = C::now();
+    });
+}
 
 /// Global because the trace hooks are free functions without any `self` argument.
 ///
@@ -151,22 +219,13 @@ static COUNTER_HZ: AtomicU32 = AtomicU32::new(0);
 /// accesses happen inside a critical section.
 static STATE: Mutex<RefCell<State>> = Mutex::new(RefCell::new(State::new()));
 
-/// Enables the DWT cycle counter used for the measurements.
-///
-/// Tasks polled before this call are not measured.
-pub fn init(mut dcb: DCB, mut dwt: DWT, core_clock_hz: u32) {
-    dcb.enable_trace();
-    // The Cortex-M7 DWT is software locked after reset.
-    DWT::unlock();
-    dwt.enable_cycle_counter();
-    COUNTER_HZ.store(core_clock_hz, Ordering::Relaxed);
-}
-
-/// Single point to replace for cores without a DWT cycle counter, for example with a
-/// free-running hardware timer. It must be 32 bits wide and must not wrap twice during a
-/// single task poll.
-fn counter() -> u32 {
-    DWT::cycle_count()
+/// The [`Counter`] passed to [`init`]. Stored as function pointers because statics can not be
+/// generic.
+#[derive(Clone, Copy)]
+struct CounterFns {
+    now: fn() -> u32,
+    hz: fn() -> u32,
+    mask: u32,
 }
 
 /// Run time statistics of one task.
@@ -194,7 +253,7 @@ pub struct IrqStats {
 enum Context {
     Executor,
     Task(usize),
-    /// Active exception number.
+    /// ID passed to [`interrupt_scope`].
     Interrupt(usize),
 }
 
@@ -204,10 +263,12 @@ enum Context {
 /// structure for accounting tick/cycle increments. Embassy tasks are usually static and the number
 /// of tasks is bounded in those systems, so this was considered sufficient for task tracing.
 struct State {
-    //// Task statistics hash map.
-    tasks: FnvIndexMap<usize, TaskStats, MAX_TASKS>,
+    /// Set by [`init`]. Nothing is measured before.
+    counter: Option<CounterFns>,
+    /// Task statistics hash map.
+    tasks: TaskMap,
     /// Hardware interrupts statistics hash map.
-    irqs: FnvIndexMap<usize, IrqStats, MAX_IRQS>,
+    irqs: IrqMap,
     /// Contexts which were entered and not left yet. They can be nested because interrupt
     /// executors and measured interrupt handlers preempt other contexts.
     ///
@@ -222,7 +283,7 @@ struct State {
     /// Contexts which did not fit into [`State::active_contexts`]. Their time is added to the
     /// innermost context which fit.
     untracked_nesting: u32,
-    /// Stays set once [`State::untracked_nesting`] was used, for the warning in [`print_stats`].
+    /// Stays set once [`State::untracked_nesting`] was used.
     max_nesting_exceeded: bool,
     /// Tasks which did not fit into the map and are not measured.
     untracked_tasks: u32,
@@ -233,8 +294,9 @@ struct State {
 impl State {
     const fn new() -> Self {
         Self {
-            tasks: FnvIndexMap::new(),
-            irqs: FnvIndexMap::new(),
+            counter: None,
+            tasks: TaskMap::new(),
+            irqs: IrqMap::new(),
             active_contexts: heapless::Vec::new(),
             last_count: 0,
             executor_ticks: 0,
@@ -246,10 +308,13 @@ impl State {
         }
     }
 
-    // This helper method is called on every task [Self::enter] and [Self::leave] method call.
+    // This helper method is called on every [Self::enter] and [Self::leave] method call.
     fn add_elapsed_to_active(&mut self) {
-        let now = counter();
-        let elapsed = u64::from(now.wrapping_sub(self.last_count));
+        let Some(counter) = self.counter else {
+            return;
+        };
+        let now = (counter.now)();
+        let elapsed = u64::from(now.wrapping_sub(self.last_count) & counter.mask);
         self.last_count = now;
         match self.active_contexts.last() {
             Some(Context::Executor) => self.executor_ticks += elapsed,
@@ -284,18 +349,16 @@ impl State {
         }
     }
 
-    fn enter_interrupt(&mut self, vector: usize, name: &'static str) {
-        if !self.irqs.contains_key(&vector)
-            && self.irqs.insert(vector, IrqStats::default()).is_err()
-        {
+    fn enter_interrupt(&mut self, id: usize, name: &'static str) {
+        if !self.irqs.contains_key(&id) && self.irqs.insert(id, IrqStats::default()).is_err() {
             self.untracked_irqs = self.untracked_irqs.saturating_add(1);
         }
-        if let Some(stats) = self.irqs.get_mut(&vector) {
+        if let Some(stats) = self.irqs.get_mut(&id) {
             stats.name = Some(name);
             stats.calls += 1;
         }
         // Pushed even if untracked, so the time is not added to the preempted context.
-        self.enter(Context::Interrupt(vector));
+        self.enter(Context::Interrupt(id));
     }
 
     /// Returns the entry for a task which is about to be named or spawned.
@@ -392,7 +455,7 @@ impl Trace for Tracer {
     // the task having ended ([task_end]).
     fn task_ready_begin(_executor: ExecutorId, _task: TaskRef) {}
 
-    /// Pop the executor from the context stack.
+    // Pops the executor from the context stack.
     fn executor_idle(_executor: ExecutorId) {
         with_state(State::leave);
     }
@@ -417,23 +480,16 @@ embassy_executor::trace_impl!(Tracer);
 
 /// Measures the current interrupt handler until the returned guard is dropped.
 ///
-/// Create it first thing in the handler. The interrupt is identified by the active exception
-/// number, `name` only labels its row in [`print_stats`]. Outside of an exception handler this
-/// does nothing.
+/// Create it first thing in the handler. `id` identifies the interrupt, `name` only labels its
+/// row. Each interrupt needs a unique ID, for example its interrupt number.
 ///
 /// You do not need to use it in the handler of an interrupt executor. The executor and its tasks
 /// are already measured by the executor hooks, so the interrupt would only get the few ticks
 /// outside of the executor poll. It is harmless though, nothing is counted twice.
-pub fn interrupt_scope(name: &'static str) -> InterruptScope {
-    // SAFETY: Reading ICSR has no side effects. VECTACTIVE is read directly because
-    // `SCB::vect_active` truncates it to 8 bits.
-    let vector = (unsafe { (*SCB::PTR).icsr.read() } & 0x1ff) as usize;
-    let entered = vector != 0;
-    if entered {
-        with_state(|s| s.enter_interrupt(vector, name));
-    }
+pub fn interrupt_scope(id: usize, name: &'static str) -> InterruptScope {
+    with_state(|s| s.enter_interrupt(id, name));
     InterruptScope {
-        entered,
+        entered: true,
         _not_send: PhantomData,
     }
 }
@@ -448,6 +504,17 @@ pub struct InterruptScope {
     _not_send: PhantomData<*const ()>,
 }
 
+impl InterruptScope {
+    /// A scope which measures nothing, for example when created outside of an interrupt.
+    #[cfg(feature = "cortex-m")]
+    fn inactive() -> Self {
+        Self {
+            entered: false,
+            _not_send: PhantomData,
+        }
+    }
+}
+
 impl Drop for InterruptScope {
     fn drop(&mut self) {
         if self.entered {
@@ -457,16 +524,19 @@ impl Drop for InterruptScope {
 }
 
 /// Copy of all statistics at one point in time, see [`snapshot`].
+///
+/// Its [`Display`](core::fmt::Display) implementation prints it as a table.
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     /// Keyed by task ID.
-    pub tasks: FnvIndexMap<usize, TaskStats, MAX_TASKS>,
-    /// Keyed by exception number.
-    pub irqs: FnvIndexMap<usize, IrqStats, MAX_IRQS>,
+    pub tasks: TaskMap,
+    /// Keyed by the ID passed to [`interrupt_scope`].
+    pub irqs: IrqMap,
     /// Counter ticks spent in executors outside of task polls.
     pub executor_ticks: u64,
     /// Counter ticks of ended tasks which are no longer in [`Snapshot::tasks`].
     pub ended_task_ticks: u64,
+    /// Passed to [`snapshot`].
     pub uptime_us: u64,
     /// Frequency of all tick values.
     pub counter_hz: u32,
@@ -480,7 +550,7 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn ticks_to_us(&self, ticks: u64) -> u64 {
-        let hz = u64::from(self.counter_hz);
+        let hz = u64::from(self.counter_hz).max(1);
         // Split so that the multiplication can not overflow, even for long uptimes.
         ticks / hz * 1_000_000 + ticks % hz * 1_000_000 / hz
     }
@@ -510,104 +580,118 @@ impl Snapshot {
 
 /// Returns a copy of all statistics, or `None` if [`init`] was not called.
 ///
+/// `uptime_us` is the time since boot. The idle time is derived from it, so it should be measured
+/// by a clock which keeps running while the core sleeps.
+///
 /// Only the copy happens inside the critical section, so the interrupt latency does not depend
 /// on what the caller does with it.
-pub fn snapshot() -> Option<Snapshot> {
-    let counter_hz = COUNTER_HZ.load(Ordering::Relaxed);
-    if counter_hz == 0 {
-        return None;
-    }
-    let snapshot = critical_section::with(|cs| {
+pub fn snapshot(uptime_us: u64) -> Option<Snapshot> {
+    critical_section::with(|cs| {
         let s = STATE.borrow_ref(cs);
-        Snapshot {
+        let counter = s.counter?;
+        Some(Snapshot {
             tasks: s.tasks.clone(),
             irqs: s.irqs.clone(),
             executor_ticks: s.executor_ticks,
             ended_task_ticks: s.ended_task_ticks,
-            uptime_us: Instant::now().as_micros(),
-            counter_hz,
+            uptime_us,
+            counter_hz: (counter.hz)(),
             untracked_tasks: s.untracked_tasks,
             untracked_irqs: s.untracked_irqs,
             max_nesting_exceeded: s.max_nesting_exceeded,
+        })
+    })
+}
+
+impl fmt::Display for Snapshot {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let uptime_us = self.uptime_us;
+
+        writeln!(f, "{:<16} {:>12} {:>7} {:>10}", "Task", "Time [us]", "%", "Polls")?;
+        writeln!(f, "------------------------------------------------")?;
+        for (id, stats) in &self.tasks {
+            let us = self.ticks_to_us(stats.ticks);
+            let mut name = heapless::String::<16>::new();
+            match stats.name {
+                Some(n) => write!(name, "{:.16}", n).unwrap_or(()),
+                None => write!(name, "{:#x}", id).unwrap_or(()),
+            }
+            writeln!(
+                f,
+                "{:<16} {:>12} {:>7} {:>10}{}",
+                name,
+                us,
+                Percent::new(us, uptime_us),
+                stats.polls,
+                if stats.ended { " (ended)" } else { "" },
+            )?;
         }
-    });
-    Some(snapshot)
+        if !self.irqs.is_empty() {
+            writeln!(f)?;
+            writeln!(f, "{:<16} {:>12} {:>7} {:>10}", "Interrupt", "Time [us]", "%", "Calls")?;
+            writeln!(f, "------------------------------------------------")?;
+        }
+        for (id, stats) in &self.irqs {
+            let us = self.ticks_to_us(stats.ticks);
+            let mut name = heapless::String::<16>::new();
+            match stats.name {
+                Some(n) => write!(name, "{:.16}", n).unwrap_or(()),
+                None => write!(name, "irq {}", id).unwrap_or(()),
+            }
+            writeln!(
+                f,
+                "{:<16} {:>12} {:>7} {:>10}",
+                name,
+                us,
+                Percent::new(us, uptime_us),
+                stats.calls,
+            )?;
+        }
+        writeln!(f)?;
+        writeln!(f, "{:<16} {:>12} {:>7}", "Summary", "Time [us]", "%")?;
+        writeln!(f, "------------------------------------------------")?;
+        for (name, us) in [
+            ("tasks", self.tasks_us()),
+            ("interrupts", self.irqs_us()),
+            ("executor", self.executor_us()),
+            ("idle + other", self.idle_and_other_us()),
+        ] {
+            writeln!(f, "{:<16} {:>12} {:>7}", name, us, Percent::new(us, uptime_us))?;
+        }
+        writeln!(f, "------------------------------------------------")?;
+        write!(f, "{:<16} {:>12}", "uptime", uptime_us)?;
+        if self.untracked_tasks > 0 {
+            write!(f, "\n{} tasks did not fit, increase MAX_TASKS", self.untracked_tasks)?;
+        }
+        if self.untracked_irqs > 0 {
+            write!(f, "\n{} interrupt calls did not fit, increase MAX_IRQS", self.untracked_irqs)?;
+        }
+        if self.max_nesting_exceeded {
+            write!(f, "\nnesting exceeded MAX_NESTING, run times were added to the wrong context")?;
+        }
+        Ok(())
+    }
 }
 
 /// Prints [`snapshot`] as a table.
-pub fn print_stats() {
-    let Some(snapshot) = snapshot() else {
-        defmt::warn!("trace: init was not called");
-        return;
-    };
-    let uptime_us = snapshot.uptime_us;
-
-    print_header("Task", "Polls");
-    for (id, stats) in &snapshot.tasks {
-        let us = snapshot.ticks_to_us(stats.ticks);
-        let mut name = heapless::String::<16>::new();
-        match stats.name {
-            Some(n) => write!(name, "{:.16}", n).unwrap_or(()),
-            None => write!(name, "{:#x}", id).unwrap_or(()),
-        }
-        print_row(format_args!(
-            "{:<16} {:>12} {:>7} {:>10}{}",
-            name,
-            us,
-            Percent::new(us, uptime_us),
-            stats.polls,
-            if stats.ended { " (ended)" } else { "" },
-        ));
+#[cfg(feature = "defmt")]
+pub fn print_stats(uptime_us: u64) {
+    match snapshot(uptime_us) {
+        Some(snapshot) => defmt::println!("{}", defmt::Display2Format(&snapshot)),
+        None => defmt::warn!("embassy-executor-stats: init was not called"),
     }
-    if !snapshot.irqs.is_empty() {
-        defmt::println!("");
-        print_header("Interrupt", "Calls");
-    }
-    for (vector, stats) in &snapshot.irqs {
-        let us = snapshot.ticks_to_us(stats.ticks);
-        let mut name = heapless::String::<16>::new();
-        match stats.name {
-            Some(n) => write!(name, "{:.16}", n).unwrap_or(()),
-            None => write!(name, "vector {}", vector).unwrap_or(()),
-        }
-        print_row(format_args!(
-            "{:<16} {:>12} {:>7} {:>10}",
-            name,
-            us,
-            Percent::new(us, uptime_us),
-            stats.calls,
-        ));
-    }
-    defmt::println!("");
-    print_header("Summary", "");
-    for (name, us) in [
-        ("tasks", snapshot.tasks_us()),
-        ("interrupts", snapshot.irqs_us()),
-        ("executor", snapshot.executor_us()),
-        ("idle + other", snapshot.idle_and_other_us()),
-    ] {
-        print_row(format_args!(
-            "{:<16} {:>12} {:>7}",
-            name,
-            us,
-            Percent::new(us, uptime_us)
-        ));
-    }
-    defmt::println!("{=str}", SEPARATOR);
-    print_row(format_args!("{:<16} {:>12}", "uptime", uptime_us));
-    print_warnings(&snapshot);
 }
 
 /// Prints the same content as [`print_stats`] with defmt formatting only.
 ///
 /// The rows are not aligned. In exchange the `core::fmt` machinery is not linked in, as long as
 /// [`print_stats`] is not used either.
-pub fn print_stats_defmt() {
-    let Some(snapshot) = snapshot() else {
-        defmt::warn!("trace: init was not called");
+#[cfg(feature = "defmt")]
+pub fn print_stats_defmt(uptime_us: u64) {
+    let Some(snapshot) = snapshot(uptime_us) else {
+        defmt::warn!("embassy-executor-stats: init was not called");
         return;
     };
-    let uptime_us = snapshot.uptime_us;
 
     for (id, stats) in &snapshot.tasks {
         let us = snapshot.ticks_to_us(stats.ticks);
@@ -631,63 +715,43 @@ pub fn print_stats_defmt() {
             ),
         }
     }
-    for stats in snapshot.irqs.values() {
+    for (id, stats) in &snapshot.irqs {
         let us = snapshot.ticks_to_us(stats.ticks);
-        defmt::println!(
-            "interrupt {=str}: {=u64} us, {}, {=u64} calls",
-            stats.name.unwrap_or("?"),
-            us,
-            Percent::new(us, uptime_us),
-            stats.calls
-        );
+        match stats.name {
+            Some(name) => defmt::println!(
+                "interrupt {=str}: {=u64} us, {}, {=u64} calls",
+                name,
+                us,
+                Percent::new(us, uptime_us),
+                stats.calls
+            ),
+            None => defmt::println!(
+                "interrupt {=usize}: {=u64} us, {}, {=u64} calls",
+                id,
+                us,
+                Percent::new(us, uptime_us),
+                stats.calls
+            ),
+        }
     }
-    for (name, us) in [
-        ("tasks", snapshot.tasks_us()),
-        ("interrupts", snapshot.irqs_us()),
-        ("executor", snapshot.executor_us()),
-        ("idle + other", snapshot.idle_and_other_us()),
-    ] {
-        defmt::println!("{=str}: {=u64} us, {}", name, us, Percent::new(us, uptime_us));
-    }
+    let tasks_us = snapshot.tasks_us();
+    defmt::println!("tasks: {=u64} us, {}", tasks_us, Percent::new(tasks_us, uptime_us));
+    let irqs_us = snapshot.irqs_us();
+    defmt::println!("interrupts: {=u64} us, {}", irqs_us, Percent::new(irqs_us, uptime_us));
+    let executor_us = snapshot.executor_us();
+    defmt::println!("executor: {=u64} us, {}", executor_us, Percent::new(executor_us, uptime_us));
+    let idle_us = snapshot.idle_and_other_us();
+    defmt::println!("idle + other: {=u64} us, {}", idle_us, Percent::new(idle_us, uptime_us));
     defmt::println!("uptime: {=u64} us", uptime_us);
-    print_warnings(&snapshot);
-}
-
-fn print_warnings(snapshot: &Snapshot) {
     if snapshot.untracked_tasks > 0 {
-        defmt::warn!(
-            "{} tasks did not fit, increase MAX_TASKS",
-            snapshot.untracked_tasks
-        );
+        defmt::warn!("{} tasks did not fit, increase MAX_TASKS", snapshot.untracked_tasks);
     }
     if snapshot.untracked_irqs > 0 {
-        defmt::warn!(
-            "{} interrupt calls did not fit, increase MAX_IRQS",
-            snapshot.untracked_irqs
-        );
+        defmt::warn!("{} interrupt calls did not fit, increase MAX_IRQS", snapshot.untracked_irqs);
     }
     if snapshot.max_nesting_exceeded {
         defmt::warn!("nesting exceeded MAX_NESTING, run times were added to the wrong context");
     }
-}
-
-/// Spans a full table row.
-const SEPARATOR: &str = "------------------------------------------------";
-
-fn print_header(name: &str, count: &str) {
-    print_row(format_args!(
-        "{:<16} {:>12} {:>7} {:>10}",
-        name, "Time [us]", "%", count
-    ));
-    defmt::println!("{=str}", SEPARATOR);
-}
-
-/// defmt has no padding or alignment, so the rows are formatted with `core::fmt`.
-fn print_row(args: core::fmt::Arguments) {
-    let mut row = heapless::String::<80>::new();
-    // A row which does not fit is printed truncated.
-    let _ = row.write_fmt(args);
-    defmt::println!("{=str}", row);
 }
 
 /// Percentage with two decimal places.
@@ -699,6 +763,7 @@ impl Percent {
     }
 }
 
+#[cfg(feature = "defmt")]
 impl defmt::Format for Percent {
     fn format(&self, f: defmt::Formatter) {
         let fraction = self.0 % 100;
@@ -706,8 +771,8 @@ impl defmt::Format for Percent {
     }
 }
 
-impl core::fmt::Display for Percent {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for Percent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut s = heapless::String::<12>::new();
         write!(s, "{}.{:02}", self.0 / 100, self.0 % 100)?;
         f.pad(&s)
