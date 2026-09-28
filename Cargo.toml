@@ -22,9 +22,9 @@ targets = ["thumbv7em-none-eabihf"]
 cortex-m = ["dep:cortex-m"]
 ## Printers for the statistics.
 defmt = ["dep:defmt"]
-## Stores the statistics in `heapless::LinearMap` instead of `FnvIndexMap`. Lookups search
-## linearly, which needs less code and memory for small sizes.
-linear-map = []
+## Stores the statistics in `heapless::FnvIndexMap` instead of `LinearMap`. Lookups are hashed,
+## which is faster for large sizes. The sizes must be powers of two.
+fnv-map = []
 
 [dependencies]
 # embassy-executor = { path = "../embassy/embassy-executor", features = ["trace", "metadata-name"] }

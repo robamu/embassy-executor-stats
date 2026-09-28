@@ -126,6 +126,33 @@
 //! Interrupt handlers which run an interrupt executor should not be scoped. The executor hooks
 //! already measure them.
 //!
+//! There is one caveat: The scope is not free. Creating and dropping it each takes a critical
+//! section with map lookups. This delays the start of the handler and briefly blocks other
+//! interrupts, which can be a problem for handlers which must serve the hardware quickly.
+//!
+//! The cheapest way to measure such time-critical handlers is to skip the interrupt support of
+//! this crate and count the ticks with a raw atomic. `now` stands for any free-running counter,
+//! for example `DWT::cycle_count`:
+//!
+//! ```ignore
+//! static UART5_TICKS: AtomicU32 = AtomicU32::new(0);
+//!
+//! #[interrupt]
+//! fn UART5() {
+//!     let start = now();
+//!     // handler code
+//!     // (...)
+//!     let elapsed = now().wrapping_sub(start);
+//!     // You can also introduce a thin guard class for less boilerplate and auto incrementing
+//!     // on drop.
+//!     UART5_TICKS.fetch_add(elapsed, Ordering::Relaxed);
+//! }
+//! ```
+//!
+//! However, this crate does not know about that handler, so its time is added to the context it
+//! preempted, like any unscoped handler. It is generally assumed that interrupt handlers will
+//! be short and the measurement results by the library should not be distorted too much by this.
+//!
 //! ## Configuration
 //!
 //! [`MAX_TASKS`], [`MAX_IRQS`] and [`MAX_NESTING`] size the static storage. They are read from
@@ -171,30 +198,30 @@ mod config {
 }
 
 /// Capacity of the task map. It must be at least the number of tasks alive at the same time.
-/// Without the `linear-map` feature, it must also be a power of two.
+/// With the `fnv-map` feature, it must also be a power of two.
 ///
 /// Set with `EMBASSY_EXECUTOR_STATS_MAX_TASKS`.
 pub const MAX_TASKS: usize = config::MAX_TASKS;
-/// Capacity of the interrupt map. It must be at least the number of measured interrupts. Without
-/// the `linear-map` feature, it must also be a power of two.
+/// Capacity of the interrupt map. It must be at least the number of measured interrupts. With the
+/// `fnv-map` feature, it must also be a power of two.
 ///
 /// Set with `EMBASSY_EXECUTOR_STATS_MAX_IRQS`.
 pub const MAX_IRQS: usize = config::MAX_IRQS;
 
 /// Task statistics keyed by task ID.
 ///
-/// The map type depends on the `linear-map` feature. Code using it should stick to the methods
+/// The map type depends on the `fnv-map` feature. Code using it should stick to the methods
 /// both map types offer, like `iter`, `values`, `get` and `len`.
-#[cfg(not(feature = "linear-map"))]
-pub type TaskMap = heapless::index_map::FnvIndexMap<usize, TaskStats, MAX_TASKS>;
-#[cfg(feature = "linear-map")]
+#[cfg(not(feature = "fnv-map"))]
 pub type TaskMap = heapless::LinearMap<usize, TaskStats, MAX_TASKS>;
+#[cfg(feature = "fnv-map")]
+pub type TaskMap = heapless::index_map::FnvIndexMap<usize, TaskStats, MAX_TASKS>;
 
 /// Interrupt statistics keyed by the ID passed to [`interrupt_scope`]. See [`TaskMap`].
-#[cfg(not(feature = "linear-map"))]
-pub type IrqMap = heapless::index_map::FnvIndexMap<usize, IrqStats, MAX_IRQS>;
-#[cfg(feature = "linear-map")]
+#[cfg(not(feature = "fnv-map"))]
 pub type IrqMap = heapless::LinearMap<usize, IrqStats, MAX_IRQS>;
+#[cfg(feature = "fnv-map")]
+pub type IrqMap = heapless::index_map::FnvIndexMap<usize, IrqStats, MAX_IRQS>;
 
 /// Depth of the context stack.
 ///
