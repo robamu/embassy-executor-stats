@@ -562,8 +562,11 @@ pub struct Snapshot {
 impl Snapshot {
     pub fn ticks_to_us(&self, ticks: u64) -> u64 {
         let hz = u64::from(self.counter_hz).max(1);
-        // Split so that the multiplication can not overflow, even for long uptimes.
-        ticks / hz * 1_000_000 + ticks % hz * 1_000_000 / hz
+        // Convert full seconds and the remaining ticks separately, so the
+        // multiplication can not overflow, even for long uptimes.
+        let full_secs = ticks / hz;
+        let remainder_ticks = ticks % hz;
+        (full_secs * 1_000_000) + (remainder_ticks * 1_000_000 / hz)
     }
 
     /// Includes [`Snapshot::ended_task_ticks`].
