@@ -26,7 +26,7 @@ doc:
 lib cmd *args:
     cargo {{cmd}} --target thumbv7em-none-eabihf {{args}}
     cargo {{cmd}} --target thumbv7em-none-eabihf --features cortex-m,defmt {{args}}
-    cargo {{cmd}} --target thumbv7em-none-eabihf --features cortex-m,defmt,linear-map {{args}}
+    cargo {{cmd}} --target thumbv7em-none-eabihf --features cortex-m,defmt,fnv-map {{args}}
     cargo {{cmd}} --target thumbv6m-none-eabi --features cortex-m,defmt {{args}}
 
 # Runs a cargo command inside each example app, for example `just app "build --release"`.

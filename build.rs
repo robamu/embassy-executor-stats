@@ -12,7 +12,7 @@ fn main() {
     // Emits cfgs like `arm_architecture = "v7e-m"`.
     arm_targets::process();
 
-    let linear_map = env::var_os("CARGO_FEATURE_LINEAR_MAP").is_some();
+    let fnv_map = env::var_os("CARGO_FEATURE_FNV_MAP").is_some();
     let mut config = String::new();
     for (name, default, map_size) in SIZES {
         let var = format!("EMBASSY_EXECUTOR_STATS_{name}");
@@ -26,8 +26,8 @@ fn main() {
         if value == 0 {
             panic!("{var} must not be zero");
         }
-        if map_size && !linear_map && !value.is_power_of_two() {
-            panic!("{var} must be a power of two without the `linear-map` feature, got {value}");
+        if map_size && fnv_map && !value.is_power_of_two() {
+            panic!("{var} must be a power of two with the `fnv-map` feature, got {value}");
         }
         config.push_str(&format!("pub const {name}: usize = {value};\n"));
     }

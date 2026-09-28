@@ -32,8 +32,8 @@ uptime                5000123
 - `cortex-m`: Provides the DWT cycle counter where the core has one, and identifies interrupts
   through `VECTACTIVE`.
 - `defmt`: Printers for the statistics using [`defmt`][defmt].
-- `linear-map`: Stores the statistics in a [`heapless::LinearMap`][linear-map], which needs less
-  code and memory for small sizes.
+- `fnv-map`: Stores the statistics in a [`heapless::FnvIndexMap`][fnv-map] instead of a
+  `LinearMap`. Lookups are hashed, which is faster for large sizes.
 
 On other architectures, implement the `Counter` trait with any free-running counter.
 
@@ -49,7 +49,7 @@ EMBASSY_EXECUTOR_STATS_MAX_IRQS = "8"     # default 4
 EMBASSY_EXECUTOR_STATS_MAX_NESTING = "8"  # default 4
 ```
 
-Without the `linear-map` feature, `MAX_TASKS` and `MAX_IRQS` must be powers of two.
+With the `fnv-map` feature, `MAX_TASKS` and `MAX_IRQS` must be powers of two.
 
 ## Examples
 
@@ -80,4 +80,4 @@ any additional terms or conditions.
 [embassy-executor]: https://docs.rs/embassy-executor
 [executor-features]: https://docs.rs/crate/embassy-executor/latest/features
 [defmt]: https://docs.rs/defmt
-[linear-map]: https://docs.rs/heapless/0.9/heapless/linear_map/type.LinearMap.html
+[fnv-map]: https://docs.rs/heapless/0.9/heapless/index_map/type.FnvIndexMap.html
