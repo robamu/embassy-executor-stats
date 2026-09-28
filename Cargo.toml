@@ -27,7 +27,8 @@ defmt = ["dep:defmt"]
 linear-map = []
 
 [dependencies]
-embassy-executor = { path = "../embassy/embassy-executor", features = ["trace", "metadata-name"] }
+# embassy-executor = { path = "../embassy/embassy-executor", features = ["trace", "metadata-name"] }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "5b5a005718ab2796657e0644e3c25d40be6264a2", features = ["trace", "metadata-name"] }
 critical-section = "1"
 heapless = "0.9"
 cortex-m = { version = "0.7.6", optional = true }
