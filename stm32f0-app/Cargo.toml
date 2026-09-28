@@ -11,9 +11,9 @@ cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-sing
 cortex-m-rt = "0.7.0"
 
 # TIM2 is used as the statistics counter, so the time driver runs on TIM3.
-embassy-stm32 = { path = "../../embassy/embassy-stm32", features = ["defmt", "stm32f051r8", "time-driver-tim3", "memory-x", "unstable-pac"] }
-embassy-executor = { path = "../../embassy/embassy-executor", features = ["platform-cortex-m", "executor-thread", "defmt"] }
-embassy-time = { path = "../../embassy/embassy-time", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"] }
+embassy-stm32 = { workspace = true, features = ["defmt", "stm32f051r8", "time-driver-tim3", "memory-x", "unstable-pac"] }
+embassy-executor = { workspace = true, features = ["platform-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { workspace = true, features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"] }
 
 defmt = "1"
 defmt-rtt = "1"

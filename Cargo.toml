@@ -11,6 +11,12 @@ members = ["stm32h7-app", "stm32f0-app"]
 # The apps only build for their own targets, see their `.cargo/config.toml`.
 default-members = ["."]
 
+# One embassy revision for the library and the apps, so they share a single embassy-executor.
+[workspace.dependencies]
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "5b5a005718ab2796657e0644e3c25d40be6264a2" }
+embassy-stm32 = { git = "https://github.com/embassy-rs/embassy.git", rev = "5b5a005718ab2796657e0644e3c25d40be6264a2" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "5b5a005718ab2796657e0644e3c25d40be6264a2" }
+
 [package.metadata.docs.rs]
 # Includes the Cortex-M module, which the crate level docs link to.
 features = ["cortex-m", "defmt"]
@@ -27,8 +33,7 @@ defmt = ["dep:defmt"]
 fnv-map = []
 
 [dependencies]
-# embassy-executor = { path = "../embassy/embassy-executor", features = ["trace", "metadata-name"] }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "5b5a005718ab2796657e0644e3c25d40be6264a2", features = ["trace", "metadata-name"] }
+embassy-executor = { workspace = true, features = ["trace", "metadata-name"] }
 critical-section = "1"
 heapless = "0.9"
 cortex-m = { version = "0.7.6", optional = true }
